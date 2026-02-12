@@ -36,5 +36,25 @@ Instalar Cisco PT
 sudo apt dpkg -i CiscoPacketTracer822_amd64_signed.deb
 ```
 
+# Desintalar 
+
+Para desinstalar Packet Tracer 8.2.2:
+
+```bash
+sudo apt purge packettracer
+sudo apt autoremove
+``` 
+
+Para verificar que se eliminó completamente:
+
+```bash
+dpkg -l | grep packet
+which packettracer
+```
+
+Si aún quedan archivos residuales manualmente:
+
+sudo rm -rf ~/.packettracer
+sudo rm -rf ~/pt
 
 
