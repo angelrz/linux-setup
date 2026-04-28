@@ -3,6 +3,6 @@
 execute to remove snap from ubuntu
 
 ``` bash
-chmod +x remove-snap.sh
+chmod +x snapRemove.sh
 ./snapRemove.sh
 ```
