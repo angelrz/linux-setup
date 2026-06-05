@@ -1,33 +1,31 @@
 # Powerline
 
-Configurar powerline en terminal de ubuntu
+Configura Powerline en el terminal de Ubuntu usando un script automático.
 
-## instalar 
+## Requisitos
 
+- Acceso con permisos de administrador.
 
-```bash 
-sudo apt install fonts-powerline
-```
+## Uso
 
-## ajustar fuente
+1. Dar permisos de ejecución al script.
 
 ```bash
-sudo nano /etc/fonts/conf.d/10-powerline-symbols.conf
+chmod +x setup.sh
 ```
 
-Agregar los siguiente
+2. Ejecutarlo con permisos de administrador.
 
-```
-    <fontconfig>
-    ...
-            <alias>
-                    <family>Ubuntu Sans Mono</family>
-                    <prefer><family>PowerlineSymbols</family></prefer>
-            </alias>
+```bash
+sudo ./setup.sh
 ```
 
-Asegurar cambio
+## Qué hace el script
 
-```
-sudo fc-cache -vf
-```
+- Instala `fonts-powerline`.
+- Agrega el alias de fuente para `PowerlineSymbols` si no existe.
+- Actualiza la caché de fuentes con `fc-cache -vf`.
+
+## Notas
+
+- El script crea un respaldo de `/etc/fonts/conf.d/10-powerline-symbols.conf` antes de modificarlo.
