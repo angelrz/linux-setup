@@ -42,7 +42,7 @@ Instalar la última versión
 sudo apt-get install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-Probar funcionamiento con la imagen 'Hola Mundo'
+Probar funcionamiento con la imagen `hello-world`
 
 ```bash
 sudo docker run hello-world
@@ -50,20 +50,20 @@ sudo docker run hello-world
 
 ## Ejecutar sin superusuario (sudo)
 
-Crear/añadir el grupo de **docker**:
+Crear/añadir el grupo de `docker`:
 
 ```bash
 sudo groupadd docker
 ```
 
-Agrega tú **usuario** al grupo de **docker**:
+Agrega tu `usuario` al grupo de `docker`:
 
 ```bash
 sudo usermod -aG docker $USER
 ```
 
 > [!CAUTION]
-> Sustituir $USER por tu usuario, ejemplo, si tu usuario es tux ejecuta sudo usermod -aG docker tux
+> Sustituir `$USER` por tu usuario, ejemplo, si tu usuario es `tux` ejecuta `sudo usermod -aG docker tux`
 
 Reinicia, cierra sesión o abre un nuevo terminal para que haga efecto. Teclea el sig comando para aplicar los cambios en los grupo.
 
