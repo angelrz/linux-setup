@@ -3,6 +3,33 @@
 > [!note]
 > Recordar, estamos iniciando el sistema, por ende todo se realiza con `su`
 
+## Script de automatización
+
+Este repositorio incluye un script para automatizar tareas seguras en Debian 12 o LMDE6.
+
+### Uso
+
+1. Dar permisos de ejecución.
+
+```bash
+chmod +x ../setup.sh
+```
+
+2. Ejecutarlo con permisos de administrador.
+
+```bash
+sudo ../setup.sh
+```
+
+### Qué hace el script
+
+- Detecta si el sistema es Debian 12 o LMDE6.
+- Ejecuta tareas automatizables (reloj local, bash-completion, update-grub, dconf).
+- Elimina paquetes solo cuando aplica (Debian 12 o LMDE6).
+- Deja recordatorios para los pasos manuales.
+
+Archivo: [../setup.sh](../setup.sh)
+
 ## Superusuario
 
 ```bash
