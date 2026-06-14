@@ -1,0 +1,66 @@
+// .config/Code/User/settings.json
+
+{
+  // appearance 
+  "window.zoomLevel": 0.3,
+  "editor.fontSize": 14,
+  "editor.tabSize": 4,
+  "editor.fontFamily": "JetBrains Mono",
+  "editor.fontLigatures": true,
+  //"chat.commandCenter.enabled": false,
+  "workbench.colorTheme": "Monokai",
+  "workbench.preferredDarkColorTheme": "Monokai",
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "terminal.integrated.cursorBlinking": true,
+  "workbench.editor.pinnedTabsOnSeparateRow": true,
+  "workbench.iconTheme": "vscode-icons",
+  "workbench.activityBar.iconClickBehavior": "focus",
+  "workbench.startupEditor": "none",
+  // editor
+  "editor.cursorBlinking": "expand",
+  "editor.minimap.enabled": false,
+  "editor.scrollbar.vertical": "auto",
+  "editor.formatOnSave": true,
+  "editor.overviewRulerBorder": false,
+  "editor.glyphMargin": false,
+  "breadcrumbs.enabled": false,
+  "editor.linkedEditing": true,
+  "editor.renderControlCharacters": true,
+  "editor.language.colorizedBracketPairs": [],
+  "editor.wordWrap": "on",
+  "editor.wordWrapColumn": 100,
+  "editor.hover.above": false,
+  "editor.unicodeHighlight.nonBasicASCII": false,
+  "zenMode.hideActivityBar": true,
+  // terminal 
+  "vsicons.dontShowNewVersionMessage": true,
+  // extensions
+  "settingsSync.ignoredExtensions": [],
+  "settingsSync.ignoredSettings": [],
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "extensions.ignoreRecommendations": true,
+  "update.enableWindowsBackgroundUpdates": false,
+  "update.mode": "manual",
+  "files.autoSave": "afterDelay",
+  "explorer.confirmDelete": false,
+  "chat.commandCenter.enabled": false,
+  "github.copilot.enable": {
+    "*": false,
+    "plaintext": false,
+    "markdown": false,
+    "html": false
+  },
+  "[json]": {
+    "editor.defaultFormatter": "vscode.json-language-features"
+  },
+  "files.associations": {
+    "*.asm": "cpp",
+    "*.txt": "plaintext"
+  },
+  "[wat]": {},
+  "markdown.preview.breaks": true,
+  // ultimos
+  "window.commandCenter": false,
+  "git.autofetch": true
+}
