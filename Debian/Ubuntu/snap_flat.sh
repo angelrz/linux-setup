@@ -25,3 +25,14 @@ sudo apt autoremove snapd --purge -y
 sudo apt-mark hold snapd
 
 echo "\e[1;32m\nSnapd is successfully removed.\n"
+
+# Flatpak is an alternative to snap, but it is not removed by this script. You can remove it with the following command:
+sudo apt install flatpak -y
+
+# Install GNOME Software Flatpak plugin
+sudo apt install gnome-software-plugin-flatpak -y
+
+# Add the Flathub repository
+flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+echo "\e[1;32m\nFlatpak is successfully installed and configured.\n Reboot your system to complete the process.\n"

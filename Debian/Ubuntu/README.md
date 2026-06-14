@@ -1,8 +1,8 @@
 # Run script
 
-execute to remove snap from ubuntu
+execute to remove snap and install flatpak ubuntu 24.04
 
 ``` bash
-chmod +x snapRemove.sh
-./snapRemove.sh
+chmod +x snap_flat.sh
+./snap_flat.sh
 ```
