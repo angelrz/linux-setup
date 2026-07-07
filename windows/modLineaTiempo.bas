@@ -159,6 +159,40 @@ Public Sub eliminarALineaTiempo()
     MsgBox "Evento borrado y presentacion actualizada.", vbInformation, "Borrar evento"
 End Sub
 
+Public Sub verPresentacion()
+    Dim pptApp As Object
+    Dim pptPres As Object
+    Dim rutaPpt As String
+
+    On Error GoTo ErrorAbrir
+
+    rutaPpt = RutaPowerPoint()
+
+    If rutaPpt = vbNullString Then Exit Sub
+    If Not CarpetaPowerPointDisponible(rutaPpt) Then Exit Sub
+
+    If Dir$(rutaPpt) = vbNullString Then
+        MsgBox "No se encontro la presentacion en esta ruta:" & vbCrLf & vbCrLf & rutaPpt & vbCrLf & vbCrLf & _
+            "Agrega un evento para crear o actualizar la linea del tiempo.", vbExclamation, "Presentacion no encontrada"
+        Exit Sub
+    End If
+
+    Set pptApp = ObtenerPowerPoint()
+    pptApp.Visible = True
+    Set pptPres = AbrirOPresentacion(pptApp, rutaPpt)
+
+    On Error Resume Next
+    pptApp.Activate
+    pptPres.Windows(1).Activate
+    On Error GoTo 0
+    Exit Sub
+
+ErrorAbrir:
+    MsgBox "No se pudo abrir la presentacion." & vbCrLf & vbCrLf & _
+        "Ruta:" & vbCrLf & rutaPpt & vbCrLf & vbCrLf & _
+        "Detalle: " & Err.Description, vbExclamation, "Error al abrir"
+End Sub
+
 Private Sub CrearLineaTiempoPowerPoint()
     Dim wsEventos As Worksheet
     Dim ultimaFila As Long
@@ -182,25 +216,31 @@ Private Sub CrearLineaTiempoPowerPoint()
     totalEventos = ultimaFila - 1
     rutaPpt = RutaPowerPoint()
 
+    If rutaPpt = vbNullString Then Exit Sub
+    If Not CarpetaPowerPointDisponible(rutaPpt) Then Exit Sub
+
     Set pptApp = ObtenerPowerPoint()
     pptApp.Visible = True
 
     If Dir$(rutaPpt) = vbNullString Then
         If Not ConfirmarCreacionPresentacion(rutaPpt) Then Exit Sub
         Set pptPres = CrearPresentacionBase(pptApp, rutaPpt)
+        If pptPres Is Nothing Then Exit Sub
         MsgBox "La presentacion se creo con exito en:" & vbCrLf & vbCrLf & rutaPpt, vbInformation, "Presentacion creada"
     Else
         Set pptPres = AbrirOPresentacion(pptApp, rutaPpt)
     End If
 
+    If PresentacionEnSoloLectura(pptPres, rutaPpt) Then Exit Sub
+
     If pptPres.Slides.Count < DIAPO_PRIMERA_LINEA Then
         CompletarPresentacionBase pptPres
-        pptPres.SaveAs rutaPpt
+        If Not GuardarPresentacionComo(pptPres, rutaPpt) Then Exit Sub
     End If
 
     EliminarDiapositivasGeneradas pptPres
     CrearDiapositivasDesdeEventos pptPres, wsEventos, totalEventos
-    pptPres.Save
+    If Not GuardarPresentacion(pptPres, rutaPpt) Then Exit Sub
 End Sub
 
 Private Function ObtenerFechaNormalizada(ByVal celdaFecha As Range, ByRef fechaSalida As Date) As Boolean
@@ -475,7 +515,53 @@ Private Function ObtenerPowerPoint() As Object
 End Function
 
 Private Function RutaPowerPoint() As String
-    RutaPowerPoint = ThisWorkbook.Path & Application.PathSeparator & ARCHIVO_POWERPOINT_SALIDA
+    Dim rutaBase As String
+
+    rutaBase = ThisWorkbook.Path
+
+    If rutaBase = vbNullString Then
+        MsgBox "Guarda primero el libro de Excel para poder crear la presentacion en la misma carpeta.", vbExclamation, "Libro sin guardar"
+        RutaPowerPoint = vbNullString
+        Exit Function
+    End If
+
+    If LCase$(Left$(rutaBase, 4)) = "http" Then
+        MsgBox "El libro parece estar abierto desde SharePoint web." & vbCrLf & vbCrLf & _
+            "Para guardar automaticamente en la misma carpeta, abre LibroLDT.xlsm desde la carpeta sincronizada de OneDrive o SharePoint en el Explorador de archivos.", _
+            vbExclamation, "Ruta de SharePoint"
+        RutaPowerPoint = vbNullString
+        Exit Function
+    End If
+
+    If Right$(rutaBase, 1) = "\" Or Right$(rutaBase, 1) = "/" Then
+        RutaPowerPoint = rutaBase & ARCHIVO_POWERPOINT_SALIDA
+    Else
+        RutaPowerPoint = rutaBase & Application.PathSeparator & ARCHIVO_POWERPOINT_SALIDA
+    End If
+End Function
+
+Private Function CarpetaPowerPointDisponible(ByVal rutaPpt As String) As Boolean
+    Dim carpetaSalida As String
+    Dim posicionSeparador As Long
+
+    On Error GoTo CarpetaNoDisponible
+
+    If rutaPpt = vbNullString Then Exit Function
+
+    posicionSeparador = InStrRev(rutaPpt, Application.PathSeparator)
+    If posicionSeparador = 0 Then GoTo CarpetaNoDisponible
+
+    carpetaSalida = Left$(rutaPpt, posicionSeparador - 1)
+
+    If Dir$(carpetaSalida, vbDirectory) = vbNullString Then GoTo CarpetaNoDisponible
+
+    CarpetaPowerPointDisponible = True
+    Exit Function
+
+CarpetaNoDisponible:
+    MsgBox "No se encontro la carpeta donde debe guardarse la presentacion." & vbCrLf & vbCrLf & _
+        "Revisa que el libro este guardado en una carpeta local o sincronizada de SharePoint:" & vbCrLf & vbCrLf & _
+        carpetaSalida, vbExclamation, "Carpeta no disponible"
 End Function
 
 Private Function AbrirOPresentacion(ByVal pptApp As Object, ByVal rutaPpt As String) As Object
@@ -483,6 +569,11 @@ Private Function AbrirOPresentacion(ByVal pptApp As Object, ByVal rutaPpt As Str
 
     For Each presentacion In pptApp.Presentations
         If StrComp(presentacion.FullName, rutaPpt, vbTextCompare) = 0 Then
+            Set AbrirOPresentacion = presentacion
+            Exit Function
+        End If
+
+        If StrComp(presentacion.Name, ARCHIVO_POWERPOINT_SALIDA, vbTextCompare) = 0 Then
             Set AbrirOPresentacion = presentacion
             Exit Function
         End If
@@ -496,9 +587,59 @@ Private Function CrearPresentacionBase(ByVal pptApp As Object, ByVal rutaPpt As 
 
     Set pptPres = pptApp.Presentations.Add
     CompletarPresentacionBase pptPres
-    pptPres.SaveAs rutaPpt
+    If Not GuardarPresentacionComo(pptPres, rutaPpt) Then Exit Function
 
     Set CrearPresentacionBase = pptPres
+End Function
+
+Private Function PresentacionEnSoloLectura(ByVal pptPres As Object, ByVal rutaPpt As String) As Boolean
+    Dim esSoloLectura As Boolean
+
+    On Error Resume Next
+    esSoloLectura = CBool(pptPres.ReadOnly)
+    If Err.Number <> 0 Then
+        Err.Clear
+        esSoloLectura = False
+    End If
+    On Error GoTo 0
+
+    If esSoloLectura Then
+        MsgBox "La presentacion esta abierta en modo solo lectura y no se puede actualizar." & vbCrLf & vbCrLf & _
+            "Cierra la presentacion, o abrela desde la carpeta sincronizada con permisos de edicion:" & vbCrLf & vbCrLf & _
+            rutaPpt, vbExclamation, "Presentacion en solo lectura"
+    End If
+
+    PresentacionEnSoloLectura = esSoloLectura
+End Function
+
+Private Function GuardarPresentacion(ByVal pptPres As Object, ByVal rutaPpt As String) As Boolean
+    On Error GoTo ErrorGuardar
+
+    If PresentacionEnSoloLectura(pptPres, rutaPpt) Then Exit Function
+
+    pptPres.Save
+    GuardarPresentacion = True
+    Exit Function
+
+ErrorGuardar:
+    MsgBox "No se pudo guardar la presentacion." & vbCrLf & vbCrLf & _
+        "Si esta abierta en PowerPoint, cierrala o revisa que no este en modo solo lectura." & vbCrLf & vbCrLf & _
+        "Ruta:" & vbCrLf & rutaPpt & vbCrLf & vbCrLf & _
+        "Detalle: " & Err.Description, vbExclamation, "Error al guardar"
+End Function
+
+Private Function GuardarPresentacionComo(ByVal pptPres As Object, ByVal rutaPpt As String) As Boolean
+    On Error GoTo ErrorGuardar
+
+    pptPres.SaveAs rutaPpt
+    GuardarPresentacionComo = True
+    Exit Function
+
+ErrorGuardar:
+    MsgBox "No se pudo crear o guardar la presentacion." & vbCrLf & vbCrLf & _
+        "Revisa que la carpeta este disponible y que el archivo no este abierto en modo solo lectura." & vbCrLf & vbCrLf & _
+        "Ruta:" & vbCrLf & rutaPpt & vbCrLf & vbCrLf & _
+        "Detalle: " & Err.Description, vbExclamation, "Error al guardar"
 End Function
 
 Private Function ConfirmarCreacionPresentacion(ByVal rutaPpt As String) As Boolean
@@ -528,16 +669,22 @@ Private Sub LimpiarPowerPointSinEventos()
 
     rutaPpt = RutaPowerPoint()
 
+    If rutaPpt = vbNullString Then Exit Sub
+    If Not CarpetaPowerPointDisponible(rutaPpt) Then Exit Sub
+
     Set pptApp = ObtenerPowerPoint()
     pptApp.Visible = True
 
     If Dir$(rutaPpt) = vbNullString Then
         If Not ConfirmarCreacionPresentacion(rutaPpt) Then Exit Sub
         Set pptPres = CrearPresentacionBase(pptApp, rutaPpt)
+        If pptPres Is Nothing Then Exit Sub
         MsgBox "La presentacion se creo con exito en:" & vbCrLf & vbCrLf & rutaPpt, vbInformation, "Presentacion creada"
     Else
         Set pptPres = AbrirOPresentacion(pptApp, rutaPpt)
     End If
+
+    If PresentacionEnSoloLectura(pptPres, rutaPpt) Then Exit Sub
 
     If pptPres.Slides.Count < DIAPO_PRIMERA_LINEA Then CompletarPresentacionBase pptPres
 
@@ -545,7 +692,7 @@ Private Sub LimpiarPowerPointSinEventos()
     LimpiarDiapositiva pptPres.Slides(DIAPO_PRIMERA_LINEA)
     AgregarTitulo pptPres.Slides(DIAPO_PRIMERA_LINEA), TituloPresentacion()
     AgregarLineaBase pptPres.Slides(DIAPO_PRIMERA_LINEA), 0, LINEA_Y, pptPres.PageSetup.SlideWidth
-    pptPres.Save
+    If Not GuardarPresentacion(pptPres, rutaPpt) Then Exit Sub
 End Sub
 
 Private Sub EliminarDiapositivasGeneradas(ByVal pptPres As Object)
