@@ -1,4 +1,3 @@
-Attribute VB_Name = "modLineaTiempo"
 Option Explicit
 
 ' Configuracion principal del libro.
@@ -13,21 +12,36 @@ Private Const COL_EVENTO_COMENTARIO As String = "D"
 
 ' Configuracion de PowerPoint.
 Private Const ARCHIVO_POWERPOINT_SALIDA As String = "Linea del Tiempo.pptx"
-Private Const EVENTOS_POR_DIAPOSITIVA As Long = 5
+' Conservada solo para compatibilidad con funciones privadas antiguas no utilizadas.
+Private Const ARCHIVO_PLANTILLA As String = "Plantilla Linea del Tiempo.pptx"
+Private Const EVENTOS_POR_DIAPOSITIVA As Long = 6
 Private Const DIAPO_PORTADA As Long = 1
 Private Const DIAPO_PRIMERA_LINEA As Long = 2
 Private Const ETIQUETA_GENERADA As String = "linea_tiempo_generada"
 
 ' Medidas tomadas de la plantilla de la linea del tiempo.
-Private Const TITULO_X As Single = 66
-Private Const TITULO_Y As Single = 28.75
-Private Const TITULO_ANCHO As Single = 828
-Private Const TITULO_ALTO As Single = 38.96
-Private Const LINEA_Y As Single = 270
-Private Const LINEA_GROSOR As Single = 6
-Private Const MARCADOR_DIAMETRO As Single = 10
+Private Const TITULO_X As Single = 54
+Private Const TITULO_Y As Single = 28
+Private Const TITULO_ANCHO As Single = 852
+Private Const TITULO_ALTO As Single = 48
+Private Const LINEA_Y As Single = 306
+Private Const LINEA_GROSOR As Single = 4
+Private Const MARCADOR_DIAMETRO As Single = 16
 Private Const CONECTOR_GROSOR As Single = 2
-Private Const MAX_CARACTERES_COMENTARIO As Long = 128
+Private Const MAX_CARACTERES_COMENTARIO As Long = 150
+Private Const NOMBRE_CANTIDAD_PENDIENTE As String = "CantidadEventosPendientes"
+
+Public Sub Auto_Open()
+    On Error Resume Next
+    AplicarFijacionBotones ThisWorkbook.Worksheets(HOJA_REGISTRAR)
+    On Error GoTo 0
+End Sub
+
+Public Sub fijarBotonesFormulario()
+    AplicarFijacionBotones ThisWorkbook.Worksheets(HOJA_REGISTRAR)
+    MsgBox "Los botones quedaron fijos y no cambiaran de tamano con las celdas.", _
+        vbInformation, "Botones configurados"
+End Sub
 
 Public Sub agregarALineaTiempo()
     Dim wsRegistro As Worksheet
@@ -42,13 +56,16 @@ Public Sub agregarALineaTiempo()
     Dim colComentario As Long
     Dim filaEncabezado As Long
     Dim filaCaptura As Long
+    Dim cantidad As Long
+    Dim textoCantidad As String
+    Dim i As Long
 
     Set wsRegistro = ThisWorkbook.Worksheets(HOJA_REGISTRAR)
     Set wsEventos = ThisWorkbook.Worksheets(HOJA_EVENTOS)
 
     filaEncabezado = FilaEncabezadoFormulario(wsRegistro)
     If filaEncabezado = 0 Then
-        MsgBox "No encontre los encabezados Fecha, Tipo y Comentario en la hoja Registrar.", vbExclamation, "Formulario incompleto"
+        MsgBox "No se encontraron los encabezados Fecha, Tipo y Comentario en la hoja Registrar.", vbExclamation, "Formulario incompleto"
         Exit Sub
     End If
 
@@ -57,49 +74,67 @@ Public Sub agregarALineaTiempo()
     colTipo = ColumnaPorEncabezado(wsRegistro, "Tipo", filaEncabezado)
     colComentario = ColumnaPorEncabezado(wsRegistro, "Comentario", filaEncabezado)
 
-    If Not ObtenerFechaNormalizada(wsRegistro.Cells(filaCaptura, colFecha), fechaEvento) Then
-        MsgBox "Captura una fecha valida.", vbExclamation, "Evento incompleto"
-        wsRegistro.Cells(filaCaptura, colFecha).Select
-        Exit Sub
+    AplicarFijacionBotones wsRegistro
+    cantidad = CantidadCapturaPendiente()
+
+    If cantidad = 0 Then
+        textoCantidad = Trim$(InputBox("Ingresa el numero de eventos que deseas agregar:", "Agregar eventos", "1"))
+        If textoCantidad = vbNullString Then Exit Sub
+        If Not EsEnteroPositivo(textoCantidad) Then
+            MsgBox "La cantidad debe ser un numero entero positivo.", vbExclamation, "Cantidad invalida"
+            Exit Sub
+        End If
+
+        cantidad = CLng(textoCantidad)
+        If cantidad > 50 Then
+            MsgBox "Puedes preparar como maximo 50 eventos a la vez.", vbExclamation, "Cantidad demasiado grande"
+            Exit Sub
+        End If
+
+        PrepararFilasCaptura wsRegistro, filaCaptura, cantidad, colFecha, colTipo, colComentario
+        GuardarCantidadCaptura cantidad
+
+        If cantidad > 1 Or Not FilaCapturaTieneDatos(wsRegistro, filaCaptura, colFecha, colTipo, colComentario) Then
+            MsgBox "Se prepararon " & cantidad & " filas." & vbCrLf & vbCrLf & _
+                "Captura los eventos y vuelve a pulsar Agregar evento para guardarlos.", _
+                vbInformation, "Captura preparada"
+            wsRegistro.Cells(filaCaptura, colFecha).Select
+            Exit Sub
+        End If
     End If
 
-    tipoEvento = Trim$(CStr(wsRegistro.Cells(filaCaptura, colTipo).Value))
-    comentario = Trim$(CStr(wsRegistro.Cells(filaCaptura, colComentario).Value))
+    ' Valida primero todo el bloque para no guardar un lote incompleto.
+    For i = 0 To cantidad - 1
+        If Not ValidarFilaCaptura(wsRegistro, filaCaptura + i, colFecha, colTipo, colComentario, _
+            fechaEvento, tipoEvento, comentario) Then Exit Sub
+    Next i
 
-    If tipoEvento = vbNullString Then
-        MsgBox "Selecciona un tipo de evento.", vbExclamation, "Evento incompleto"
-        wsRegistro.Cells(filaCaptura, colTipo).Select
-        Exit Sub
-    End If
+    For i = 0 To cantidad - 1
+        Call ValidarFilaCaptura(wsRegistro, filaCaptura + i, colFecha, colTipo, colComentario, _
+            fechaEvento, tipoEvento, comentario)
 
-    If comentario = vbNullString Then
-        MsgBox "Escribe un comentario para el evento.", vbExclamation, "Evento incompleto"
-        wsRegistro.Cells(filaCaptura, colComentario).Select
-        Exit Sub
-    End If
-
-    If Len(comentario) > MAX_CARACTERES_COMENTARIO Then
-        MsgBox "El comentario debe tener maximo " & MAX_CARACTERES_COMENTARIO & " caracteres.", vbExclamation, "Comentario demasiado largo"
-        wsRegistro.Cells(filaCaptura, colComentario).Select
-        Exit Sub
-    End If
-
-    siguienteFila = SiguienteFilaLibre(wsEventos, COL_EVENTO_ID)
-    siguienteId = SiguienteIdEvento(wsEventos)
-
-    wsEventos.Cells(siguienteFila, COL_EVENTO_ID).Value = siguienteId
-    wsEventos.Cells(siguienteFila, COL_EVENTO_FECHA).Value = fechaEvento
-    wsEventos.Cells(siguienteFila, COL_EVENTO_TIPO).Value = tipoEvento
-    wsEventos.Cells(siguienteFila, COL_EVENTO_COMENTARIO).Value = comentario
-    wsEventos.Cells(siguienteFila, COL_EVENTO_FECHA).NumberFormat = "dd/mm/yyyy"
+        siguienteFila = SiguienteFilaLibre(wsEventos, COL_EVENTO_ID)
+        siguienteId = SiguienteIdEvento(wsEventos)
+        wsEventos.Cells(siguienteFila, COL_EVENTO_ID).Value = siguienteId
+        wsEventos.Cells(siguienteFila, COL_EVENTO_FECHA).Value = fechaEvento
+        wsEventos.Cells(siguienteFila, COL_EVENTO_TIPO).Value = tipoEvento
+        wsEventos.Cells(siguienteFila, COL_EVENTO_COMENTARIO).Value = comentario
+        wsEventos.Cells(siguienteFila, COL_EVENTO_FECHA).NumberFormat = "dd/mm/yyyy"
+    Next i
 
     OrdenarEventos wsEventos
     RenumerarEventos wsEventos
     FormatearTablaEventos wsEventos
-    LimpiarCaptura wsRegistro, filaCaptura, colFecha, colTipo, colComentario
+    LimpiarCapturaMultiple wsRegistro, filaCaptura, cantidad, colFecha, colTipo, colComentario
+    EliminarCantidadCaptura
+    PrepararFilasCaptura wsRegistro, filaCaptura, 1, colFecha, colTipo, colComentario
     CrearLineaTiempoPowerPoint
 
-    MsgBox "Evento agregado y presentacion actualizada.", vbInformation, "Linea del tiempo"
+    If cantidad = 1 Then
+        MsgBox "Evento agregado y presentacion actualizada.", vbInformation, "Linea del tiempo"
+    Else
+        MsgBox cantidad & " eventos agregados y presentacion actualizada.", vbInformation, "Linea del tiempo"
+    End If
 End Sub
 
 Public Sub eliminarALineaTiempo()
@@ -110,41 +145,59 @@ Public Sub eliminarALineaTiempo()
     Dim descripcionEvento As String
     Dim textoId As String
     Dim idEvento As Long
+    Dim textoCantidad As String
+    Dim cantidad As Long
+    Dim i As Long
+    Dim eliminados As Long
 
     Set wsEventos = ThisWorkbook.Worksheets(HOJA_EVENTOS)
     ultimaFila = UltimaFilaConDatos(wsEventos, COL_EVENTO_ID)
 
     If ultimaFila < 2 Then
-        MsgBox "No hay eventos para borrar.", vbExclamation, "Borrar evento"
+        MsgBox "No hay eventos para eliminar.", vbExclamation, "Eliminar eventos"
         Exit Sub
     End If
 
-    textoId = Trim$(InputBox("Escribe el ID del evento que quieres borrar:", "Borrar evento"))
-    If textoId = vbNullString Then Exit Sub
+    textoCantidad = Trim$(InputBox("Ingresa el numero de eventos que deseas eliminar:", "Eliminar eventos", "1"))
+    If textoCantidad = vbNullString Then Exit Sub
+    If Not EsEnteroPositivo(textoCantidad) Then
+        MsgBox "La cantidad debe ser un numero entero positivo.", vbExclamation, "Cantidad invalida"
+        Exit Sub
+    End If
+    cantidad = CLng(textoCantidad)
 
-    If Not EsEnteroPositivo(textoId) Then
-        MsgBox "El ID debe ser un numero entero positivo.", vbExclamation, "ID invalido"
+    If cantidad > (ultimaFila - 1) Then
+        MsgBox "No puedes eliminar " & cantidad & " eventos porque " & _
+            DescribirEventosExistentes(ultimaFila - 1) & ".", vbExclamation, "Cantidad mayor que los eventos existentes"
         Exit Sub
     End If
 
-    idEvento = CLng(textoId)
-    filaEvento = FilaPorIdEvento(wsEventos, idEvento)
+    For i = 1 To cantidad
+        textoId = Trim$(InputBox("Escribe el ID del evento " & i & " de " & cantidad & ":", "Eliminar eventos"))
+        If textoId = vbNullString Then Exit For
+        If Not EsEnteroPositivo(textoId) Then
+            MsgBox "El ID debe ser un numero entero positivo.", vbExclamation, "ID invalido"
+        Else
+            idEvento = CLng(textoId)
+            filaEvento = FilaPorIdEvento(wsEventos, idEvento)
+            If filaEvento = 0 Then
+                MsgBox "No existe un evento con el ID " & idEvento & ".", vbExclamation, "ID no encontrado"
+            Else
+                descripcionEvento = "ID " & idEvento & ": " & _
+                    CStr(wsEventos.Cells(filaEvento, COL_EVENTO_FECHA).Text) & " - " & _
+                    CStr(wsEventos.Cells(filaEvento, COL_EVENTO_TIPO).Value) & " - " & _
+                    CStr(wsEventos.Cells(filaEvento, COL_EVENTO_COMENTARIO).Value)
+                respuesta = MsgBox("Se eliminara el siguiente evento:" & vbCrLf & vbCrLf & descripcionEvento & vbCrLf & vbCrLf & _
+                    "Selecciona Si para continuar o No para cancelar.", vbQuestion + vbYesNo, "Confirmar eliminacion")
+                If respuesta = vbYes Then
+                    wsEventos.Rows(filaEvento).Delete
+                    eliminados = eliminados + 1
+                End If
+            End If
+        End If
+    Next i
 
-    If filaEvento = 0 Then
-        MsgBox "No existe un evento con el ID " & idEvento & ".", vbExclamation, "ID no encontrado"
-        Exit Sub
-    End If
-
-    descripcionEvento = "ID " & idEvento & ": " & _
-        CStr(wsEventos.Cells(filaEvento, COL_EVENTO_FECHA).Text) & " - " & _
-        CStr(wsEventos.Cells(filaEvento, COL_EVENTO_TIPO).Value) & " - " & _
-        CStr(wsEventos.Cells(filaEvento, COL_EVENTO_COMENTARIO).Value)
-
-    respuesta = MsgBox("Se borrara este evento:" & vbCrLf & vbCrLf & descripcionEvento & vbCrLf & vbCrLf & _
-        "Deseas continuar?", vbQuestion + vbYesNo, "Confirmar borrado")
-    If respuesta <> vbYes Then Exit Sub
-
-    wsEventos.Rows(filaEvento).Delete
+    If eliminados = 0 Then Exit Sub
 
     If UltimaFilaConDatos(wsEventos, COL_EVENTO_ID) >= 2 Then
         OrdenarEventos wsEventos
@@ -156,24 +209,44 @@ Public Sub eliminarALineaTiempo()
         LimpiarPowerPointSinEventos
     End If
 
-    MsgBox "Evento borrado y presentacion actualizada.", vbInformation, "Borrar evento"
+    If eliminados = 1 Then
+        MsgBox "Evento eliminado y presentacion actualizada.", vbInformation, "Eliminar eventos"
+    Else
+        MsgBox eliminados & " eventos eliminados y presentacion actualizada.", vbInformation, "Eliminar eventos"
+    End If
 End Sub
 
 Public Sub verPresentacion()
     Dim pptApp As Object
     Dim pptPres As Object
     Dim rutaPpt As String
+    Dim wsEventos As Worksheet
+    Dim ultimaFila As Long
 
     On Error GoTo ErrorAbrir
+
+    Set wsEventos = ThisWorkbook.Worksheets(HOJA_EVENTOS)
+    ultimaFila = UltimaFilaConDatos(wsEventos, COL_EVENTO_ID)
+
+    If ultimaFila < 2 Then
+        MsgBox "No hay eventos registrados en la hoja Eventos." & vbCrLf & vbCrLf & _
+            "Agrega al menos un evento antes de generar la presentacion.", _
+            vbExclamation, "Sin eventos"
+        Exit Sub
+    End If
+
+    ' Siempre crea o actualiza el archivo con los eventos actuales.
+    CrearLineaTiempoPowerPoint
 
     rutaPpt = RutaPowerPoint()
 
     If rutaPpt = vbNullString Then Exit Sub
     If Not CarpetaPowerPointDisponible(rutaPpt) Then Exit Sub
 
-    If Dir$(rutaPpt) = vbNullString Then
-        MsgBox "No se encontro la presentacion en esta ruta:" & vbCrLf & vbCrLf & rutaPpt & vbCrLf & vbCrLf & _
-            "Agrega un evento para crear o actualizar la linea del tiempo.", vbExclamation, "Presentacion no encontrada"
+    If Not ArchivoExiste(rutaPpt) Then
+        MsgBox "No se pudo generar la presentacion." & vbCrLf & vbCrLf & _
+            "Verifica que PowerPoint este instalado y que la carpeta local este disponible.", _
+            vbExclamation, "Presentacion no generada"
         Exit Sub
     End If
 
@@ -201,6 +274,8 @@ Private Sub CrearLineaTiempoPowerPoint()
     Dim pptPres As Object
     Dim rutaPpt As String
 
+    On Error GoTo ErrorGeneracion
+
     Set wsEventos = ThisWorkbook.Worksheets(HOJA_EVENTOS)
 
     OrdenarEventos wsEventos
@@ -213,34 +288,41 @@ Private Sub CrearLineaTiempoPowerPoint()
         Exit Sub
     End If
 
-    totalEventos = ultimaFila - 1
+    totalEventos = ContarEventosVisuales(wsEventos)
+    If totalEventos = 0 Then
+        LimpiarPowerPointSinEventos
+        MsgBox "No hay eventos de tipo Verde, Naranja o Rojo para mostrar.", _
+            vbExclamation, "Sin eventos visibles"
+        Exit Sub
+    End If
     rutaPpt = RutaPowerPoint()
-
     If rutaPpt = vbNullString Then Exit Sub
     If Not CarpetaPowerPointDisponible(rutaPpt) Then Exit Sub
 
     Set pptApp = ObtenerPowerPoint()
     pptApp.Visible = True
 
-    If Dir$(rutaPpt) = vbNullString Then
-        If Not ConfirmarCreacionPresentacion(rutaPpt) Then Exit Sub
+    If Not ArchivoExiste(rutaPpt) Then
         Set pptPres = CrearPresentacionBase(pptApp, rutaPpt)
-        If pptPres Is Nothing Then Exit Sub
-        MsgBox "La presentacion se creo con exito en:" & vbCrLf & vbCrLf & rutaPpt, vbInformation, "Presentacion creada"
     Else
         Set pptPres = AbrirOPresentacion(pptApp, rutaPpt)
     End If
 
+    If pptPres Is Nothing Then Exit Sub
     If PresentacionEnSoloLectura(pptPres, rutaPpt) Then Exit Sub
 
     If pptPres.Slides.Count < DIAPO_PRIMERA_LINEA Then
         CompletarPresentacionBase pptPres
-        If Not GuardarPresentacionComo(pptPres, rutaPpt) Then Exit Sub
     End If
 
     EliminarDiapositivasGeneradas pptPres
     CrearDiapositivasDesdeEventos pptPres, wsEventos, totalEventos
     If Not GuardarPresentacion(pptPres, rutaPpt) Then Exit Sub
+    Exit Sub
+
+ErrorGeneracion:
+    MsgBox "No se pudo generar la linea del tiempo." & vbCrLf & vbCrLf & _
+        "Detalle: " & Err.Description, vbExclamation, "Error PowerPoint"
 End Sub
 
 Private Function ObtenerFechaNormalizada(ByVal celdaFecha As Range, ByRef fechaSalida As Date) As Boolean
@@ -408,6 +490,14 @@ Private Function EsEnteroPositivo(ByVal texto As String) As Boolean
     EsEnteroPositivo = (CLng(texto) > 0)
 End Function
 
+Private Function DescribirEventosExistentes(ByVal cantidad As Long) As String
+    If cantidad = 1 Then
+        DescribirEventosExistentes = "solo existe 1 evento"
+    Else
+        DescribirEventosExistentes = "solo existen " & cantidad & " eventos"
+    End If
+End Function
+
 Private Function FilaPorIdEvento(ByVal ws As Worksheet, ByVal idEvento As Long) As Long
     Dim ultimaFila As Long
     Dim fila As Long
@@ -427,6 +517,159 @@ Private Sub LimpiarCaptura(ByVal ws As Worksheet, ByVal filaCaptura As Long, ByV
     ws.Cells(filaCaptura, colTipo).ClearContents
     ws.Cells(filaCaptura, colComentario).ClearContents
     ws.Cells(filaCaptura, colFecha).Select
+End Sub
+
+Private Sub AplicarFijacionBotones(ByVal ws As Worksheet)
+    Dim forma As Shape
+    Dim accion As String
+
+    For Each forma In ws.Shapes
+        On Error Resume Next
+        accion = LCase$(forma.OnAction)
+        On Error GoTo 0
+        If accion <> vbNullString Then
+            forma.Placement = xlFreeFloating
+            forma.Line.ForeColor.RGB = RGB(15, 42, 67)
+            forma.Line.Weight = 1.5
+            If InStr(accion, "agregaralineatiempo") > 0 Then
+                forma.Fill.ForeColor.RGB = RGB(21, 96, 130)
+            ElseIf InStr(accion, "eliminaralineatiempo") > 0 Or InStr(accion, "verpresentacion") > 0 Then
+                forma.Fill.ForeColor.RGB = RGB(192, 0, 0)
+            End If
+            On Error Resume Next
+            With forma.TextFrame2.TextRange.Font
+                .Name = "Calibri"
+                .Size = 11
+                .Bold = True
+                .Fill.ForeColor.RGB = RGB(255, 255, 255)
+            End With
+            forma.TextFrame2.TextRange.ParagraphFormat.Alignment = 2
+            forma.TextFrame2.VerticalAnchor = 3
+            On Error GoTo 0
+        End If
+        accion = vbNullString
+    Next forma
+End Sub
+
+Private Sub PrepararFilasCaptura(ByVal ws As Worksheet, ByVal filaInicial As Long, ByVal cantidad As Long, _
+    ByVal colFecha As Long, ByVal colTipo As Long, ByVal colComentario As Long)
+
+    Dim fila As Long
+    Dim rangoModelo As Range
+    Dim rangoDestino As Range
+
+    Set rangoModelo = ws.Range(ws.Cells(filaInicial, colFecha), ws.Cells(filaInicial, colComentario))
+
+    For fila = filaInicial To filaInicial + cantidad - 1
+        Set rangoDestino = ws.Range(ws.Cells(fila, colFecha), ws.Cells(fila, colComentario))
+        If fila > filaInicial Then
+            rangoDestino.ClearContents
+            rangoModelo.Copy
+            rangoDestino.PasteSpecial xlPasteFormats
+            On Error Resume Next
+            rangoDestino.PasteSpecial xlPasteValidation
+            On Error GoTo 0
+        End If
+
+        With rangoDestino
+            .Borders.LineStyle = xlContinuous
+            .Borders.Weight = xlThin
+            .VerticalAlignment = xlCenter
+        End With
+        ws.Cells(fila, colFecha).NumberFormat = "dd/mm/yyyy"
+        With ws.Cells(fila, colComentario)
+            .WrapText = True
+            .Font.Name = "Calibri"
+            .Font.Size = 11
+            .Font.Bold = False
+            .Font.Italic = False
+        End With
+        ws.Rows(fila).AutoFit
+    Next fila
+
+    Application.CutCopyMode = False
+    AplicarFijacionBotones ws
+End Sub
+
+Private Function FilaCapturaTieneDatos(ByVal ws As Worksheet, ByVal fila As Long, _
+    ByVal colFecha As Long, ByVal colTipo As Long, ByVal colComentario As Long) As Boolean
+
+    FilaCapturaTieneDatos = Trim$(CStr(ws.Cells(fila, colFecha).Value)) <> vbNullString And _
+        Trim$(CStr(ws.Cells(fila, colTipo).Value)) <> vbNullString And _
+        Trim$(CStr(ws.Cells(fila, colComentario).Value)) <> vbNullString
+End Function
+
+Private Function ValidarFilaCaptura(ByVal ws As Worksheet, ByVal fila As Long, _
+    ByVal colFecha As Long, ByVal colTipo As Long, ByVal colComentario As Long, _
+    ByRef fechaEvento As Date, ByRef tipoEvento As String, ByRef comentario As String) As Boolean
+
+    If Not ObtenerFechaNormalizada(ws.Cells(fila, colFecha), fechaEvento) Then
+        MsgBox "Captura una fecha valida en la fila " & fila & ".", vbExclamation, "Evento incompleto"
+        ws.Cells(fila, colFecha).Select
+        Exit Function
+    End If
+
+    tipoEvento = Trim$(CStr(ws.Cells(fila, colTipo).Value))
+    comentario = Trim$(CStr(ws.Cells(fila, colComentario).Value))
+
+    If tipoEvento = vbNullString Then
+        MsgBox "Selecciona un tipo de evento en la fila " & fila & ".", vbExclamation, "Evento incompleto"
+        ws.Cells(fila, colTipo).Select
+        Exit Function
+    End If
+
+    If comentario = vbNullString Then
+        MsgBox "Escribe un comentario en la fila " & fila & ".", vbExclamation, "Evento incompleto"
+        ws.Cells(fila, colComentario).Select
+        Exit Function
+    End If
+
+    If Len(comentario) > MAX_CARACTERES_COMENTARIO Then
+        MsgBox "El comentario de la fila " & fila & " debe tener como maximo " & _
+            MAX_CARACTERES_COMENTARIO & " caracteres.", vbExclamation, "Comentario demasiado largo"
+        ws.Cells(fila, colComentario).Select
+        Exit Function
+    End If
+
+    ValidarFilaCaptura = True
+End Function
+
+Private Sub LimpiarCapturaMultiple(ByVal ws As Worksheet, ByVal filaInicial As Long, ByVal cantidad As Long, _
+    ByVal colFecha As Long, ByVal colTipo As Long, ByVal colComentario As Long)
+
+    Dim rangoAdicional As Range
+    Dim fila As Long
+
+    ' La primera fila conserva el formato permanente del formulario.
+    ws.Range(ws.Cells(filaInicial, colFecha), ws.Cells(filaInicial, colComentario)).ClearContents
+
+    ' Las filas adicionales recuperan el aspecto normal de la hoja.
+    If cantidad > 1 Then
+        Set rangoAdicional = ws.Range(ws.Cells(filaInicial + 1, colFecha), _
+            ws.Cells(filaInicial + cantidad - 1, colComentario))
+        rangoAdicional.Clear
+
+        For fila = filaInicial + 1 To filaInicial + cantidad - 1
+            ws.Rows(fila).RowHeight = ws.StandardHeight
+        Next fila
+    End If
+End Sub
+
+Private Function CantidadCapturaPendiente() As Long
+    On Error Resume Next
+    CantidadCapturaPendiente = CLng(Evaluate(ThisWorkbook.Names(NOMBRE_CANTIDAD_PENDIENTE).RefersTo))
+    On Error GoTo 0
+End Function
+
+Private Sub GuardarCantidadCaptura(ByVal cantidad As Long)
+    EliminarCantidadCaptura
+    ThisWorkbook.Names.Add Name:=NOMBRE_CANTIDAD_PENDIENTE, RefersTo:="=" & cantidad, Visible:=False
+End Sub
+
+Private Sub EliminarCantidadCaptura()
+    On Error Resume Next
+    ThisWorkbook.Names(NOMBRE_CANTIDAD_PENDIENTE).Delete
+    On Error GoTo 0
 End Sub
 
 Private Sub OrdenarEventos(ByVal ws As Worksheet)
@@ -515,30 +758,58 @@ Private Function ObtenerPowerPoint() As Object
 End Function
 
 Private Function RutaPowerPoint() As String
-    Dim rutaBase As String
+    Dim carpetaDocumentos As String
+    Dim carpetaSalida As String
 
-    rutaBase = ThisWorkbook.Path
+    carpetaDocumentos = CreateObject("WScript.Shell").SpecialFolders("MyDocuments")
+    carpetaSalida = carpetaDocumentos & "\Linea del Tiempo"
 
-    If rutaBase = vbNullString Then
-        MsgBox "Guarda primero el libro de Excel para poder crear la presentacion en la misma carpeta.", vbExclamation, "Libro sin guardar"
-        RutaPowerPoint = vbNullString
-        Exit Function
-    End If
+    If Not CarpetaExiste(carpetaSalida) Then CrearCarpetaSiNoExiste carpetaSalida
+    If Not CarpetaExiste(carpetaSalida) Then Exit Function
 
-    If LCase$(Left$(rutaBase, 4)) = "http" Then
-        MsgBox "El libro parece estar abierto desde SharePoint web." & vbCrLf & vbCrLf & _
-            "Para guardar automaticamente en la misma carpeta, abre LibroLDT.xlsm desde la carpeta sincronizada de OneDrive o SharePoint en el Explorador de archivos.", _
-            vbExclamation, "Ruta de SharePoint"
-        RutaPowerPoint = vbNullString
-        Exit Function
-    End If
+    RutaPowerPoint = carpetaSalida & "\" & ARCHIVO_POWERPOINT_SALIDA
+End Function
 
-    If Right$(rutaBase, 1) = "\" Or Right$(rutaBase, 1) = "/" Then
-        RutaPowerPoint = rutaBase & ARCHIVO_POWERPOINT_SALIDA
+Private Function RutaPlantillaPowerPoint() As String
+    Dim carpetaDocumentos As String
+    Dim rutaLocal As String
+    Dim rutaJuntoAlLibro As String
+
+    carpetaDocumentos = CreateObject("WScript.Shell").SpecialFolders("MyDocuments")
+    rutaLocal = carpetaDocumentos & "\Linea del Tiempo\" & ARCHIVO_PLANTILLA
+    rutaJuntoAlLibro = ThisWorkbook.Path & Application.PathSeparator & ARCHIVO_PLANTILLA
+
+    If ArchivoExiste(rutaLocal) Then
+        RutaPlantillaPowerPoint = rutaLocal
+    ElseIf ThisWorkbook.Path <> vbNullString And ArchivoExiste(rutaJuntoAlLibro) Then
+        RutaPlantillaPowerPoint = rutaJuntoAlLibro
     Else
-        RutaPowerPoint = rutaBase & Application.PathSeparator & ARCHIVO_POWERPOINT_SALIDA
+        MsgBox "No se encontro la plantilla de SmartArt." & vbCrLf & vbCrLf & _
+            "Copia el archivo " & ARCHIVO_PLANTILLA & " en:" & vbCrLf & _
+            carpetaDocumentos & "\Linea del Tiempo", vbExclamation, "Plantilla no encontrada"
     End If
 End Function
+
+Private Function ArchivoExiste(ByVal rutaArchivo As String) As Boolean
+    On Error Resume Next
+    ArchivoExiste = CreateObject("Scripting.FileSystemObject").FileExists(rutaArchivo)
+    On Error GoTo 0
+End Function
+
+Private Function CarpetaExiste(ByVal rutaCarpeta As String) As Boolean
+    On Error Resume Next
+    CarpetaExiste = CreateObject("Scripting.FileSystemObject").FolderExists(rutaCarpeta)
+    On Error GoTo 0
+End Function
+
+Private Sub CrearCarpetaSiNoExiste(ByVal rutaCarpeta As String)
+    On Error GoTo ErrorCrear
+    CreateObject("Scripting.FileSystemObject").CreateFolder rutaCarpeta
+    Exit Sub
+ErrorCrear:
+    MsgBox "No se pudo crear la carpeta local:" & vbCrLf & vbCrLf & rutaCarpeta & vbCrLf & vbCrLf & _
+        "Detalle: " & Err.Description, vbExclamation, "Error de carpeta"
+End Sub
 
 Private Function CarpetaPowerPointDisponible(ByVal rutaPpt As String) As Boolean
     Dim carpetaSalida As String
@@ -560,7 +831,7 @@ Private Function CarpetaPowerPointDisponible(ByVal rutaPpt As String) As Boolean
 
 CarpetaNoDisponible:
     MsgBox "No se encontro la carpeta donde debe guardarse la presentacion." & vbCrLf & vbCrLf & _
-        "Revisa que el libro este guardado en una carpeta local o sincronizada de SharePoint:" & vbCrLf & vbCrLf & _
+        "Revisa que la carpeta local Documentos\Linea del Tiempo este disponible:" & vbCrLf & vbCrLf & _
         carpetaSalida, vbExclamation, "Carpeta no disponible"
 End Function
 
@@ -604,9 +875,9 @@ Private Function PresentacionEnSoloLectura(ByVal pptPres As Object, ByVal rutaPp
     On Error GoTo 0
 
     If esSoloLectura Then
-        MsgBox "La presentacion esta abierta en modo solo lectura y no se puede actualizar." & vbCrLf & vbCrLf & _
-            "Cierra la presentacion, o abrela desde la carpeta sincronizada con permisos de edicion:" & vbCrLf & vbCrLf & _
-            rutaPpt, vbExclamation, "Presentacion en solo lectura"
+        MsgBox "La presentacion esta abierta en modo de solo lectura y no se puede actualizar." & vbCrLf & vbCrLf & _
+            "Cierra la presentacion o abrela desde una carpeta con permisos de edicion:" & vbCrLf & vbCrLf & _
+            rutaPpt, vbExclamation, "Presentacion en modo de solo lectura"
     End If
 
     PresentacionEnSoloLectura = esSoloLectura
@@ -623,7 +894,7 @@ Private Function GuardarPresentacion(ByVal pptPres As Object, ByVal rutaPpt As S
 
 ErrorGuardar:
     MsgBox "No se pudo guardar la presentacion." & vbCrLf & vbCrLf & _
-        "Si esta abierta en PowerPoint, cierrala o revisa que no este en modo solo lectura." & vbCrLf & vbCrLf & _
+        "Si esta abierta en PowerPoint, cierrala o comprueba que no este en modo de solo lectura." & vbCrLf & vbCrLf & _
         "Ruta:" & vbCrLf & rutaPpt & vbCrLf & vbCrLf & _
         "Detalle: " & Err.Description, vbExclamation, "Error al guardar"
 End Function
@@ -637,7 +908,7 @@ Private Function GuardarPresentacionComo(ByVal pptPres As Object, ByVal rutaPpt 
 
 ErrorGuardar:
     MsgBox "No se pudo crear o guardar la presentacion." & vbCrLf & vbCrLf & _
-        "Revisa que la carpeta este disponible y que el archivo no este abierto en modo solo lectura." & vbCrLf & vbCrLf & _
+        "Revisa que la carpeta este disponible y que el archivo no este abierto en modo de solo lectura." & vbCrLf & vbCrLf & _
         "Ruta:" & vbCrLf & rutaPpt & vbCrLf & vbCrLf & _
         "Detalle: " & Err.Description, vbExclamation, "Error al guardar"
 End Function
@@ -646,11 +917,179 @@ Private Function ConfirmarCreacionPresentacion(ByVal rutaPpt As String) As Boole
     Dim respuesta As VbMsgBoxResult
 
     respuesta = MsgBox("No se encontro la presentacion." & vbCrLf & vbCrLf & _
-        "Deseas crear el archivo en esta ruta?" & vbCrLf & vbCrLf & rutaPpt, _
+        "Selecciona Si para crear el archivo en la siguiente ruta o No para cancelar:" & vbCrLf & vbCrLf & rutaPpt, _
         vbQuestion + vbYesNo, "Crear presentacion")
 
     ConfirmarCreacionPresentacion = (respuesta = vbYes)
 End Function
+
+Private Sub CerrarPresentacionSiAbierta(ByVal pptApp As Object, ByVal rutaPpt As String)
+    Dim i As Long
+
+    For i = pptApp.Presentations.Count To 1 Step -1
+        If StrComp(pptApp.Presentations(i).FullName, rutaPpt, vbTextCompare) = 0 Then
+            pptApp.Presentations(i).Close
+            Exit For
+        End If
+    Next i
+End Sub
+
+Private Function CrearSalidaDesdePlantilla(ByVal pptApp As Object, ByVal rutaPlantilla As String, _
+    ByVal rutaPpt As String, ByRef pptPres As Object) As Boolean
+
+    Dim plantilla As Object
+
+    On Error GoTo ErrorPlantilla
+
+    If ArchivoExiste(rutaPpt) Then Kill rutaPpt
+
+    ' Abre la plantilla en solo lectura y crea una copia editable.
+    Set plantilla = pptApp.Presentations.Open(rutaPlantilla, True, False, False)
+    plantilla.SaveCopyAs rutaPpt, 24
+    plantilla.Close
+
+    Set pptPres = pptApp.Presentations.Open(rutaPpt)
+    CrearSalidaDesdePlantilla = Not pptPres Is Nothing
+    Exit Function
+
+ErrorPlantilla:
+    On Error Resume Next
+    If Not plantilla Is Nothing Then plantilla.Close
+    On Error GoTo 0
+    MsgBox "No se pudo crear la presentacion desde la plantilla de SmartArt." & vbCrLf & vbCrLf & _
+        "Plantilla:" & vbCrLf & rutaPlantilla & vbCrLf & vbCrLf & _
+        "Detalle: " & Err.Description, vbExclamation, "Error de plantilla"
+End Function
+
+Private Sub CrearDiapositivasSmartArt(ByVal pptPres As Object, ByVal ws As Worksheet, ByVal totalEventos As Long)
+    Dim totalDiapositivas As Long
+    Dim numeroDiapositiva As Long
+    Dim slideActual As Object
+    Dim duplicada As Object
+    Dim i As Long
+
+    totalDiapositivas = Application.WorksheetFunction.RoundUp(totalEventos / EVENTOS_POR_DIAPOSITIVA, 0)
+
+    ' La diapositiva 2 de la plantilla es el modelo. Descarta copias antiguas.
+    For i = pptPres.Slides.Count To DIAPO_PRIMERA_LINEA + 1 Step -1
+        pptPres.Slides(i).Delete
+    Next i
+
+    For numeroDiapositiva = 1 To totalDiapositivas
+        If numeroDiapositiva = 1 Then
+            Set slideActual = pptPres.Slides(DIAPO_PRIMERA_LINEA)
+        Else
+            Set duplicada = pptPres.Slides(DIAPO_PRIMERA_LINEA).Duplicate
+            duplicada.MoveTo pptPres.Slides.Count
+            Set slideActual = pptPres.Slides(pptPres.Slides.Count)
+            slideActual.Tags.Add ETIQUETA_GENERADA, "si"
+        End If
+
+        CargarEventosEnSmartArt slideActual, ws, numeroDiapositiva, totalEventos
+    Next numeroDiapositiva
+End Sub
+
+Private Sub CargarEventosEnSmartArt(ByVal slide As Object, ByVal ws As Worksheet, _
+    ByVal numeroDiapositiva As Long, ByVal totalEventos As Long)
+
+    Dim smartShape As Object
+    Dim nodos As Object
+    Dim nodo As Object
+    Dim nodoDetalle As Object
+    Dim slot As Long
+    Dim eventosEnPagina As Long
+    Dim indiceEvento As Long
+    Dim filaEvento As Long
+    Dim fechaTexto As String
+    Dim tipoEvento As String
+    Dim comentario As String
+    Dim colorEvento As Long
+
+    Set smartShape = BuscarSmartArt(slide)
+    If smartShape Is Nothing Then
+        Err.Raise vbObjectError + 710, , "No se encontro el SmartArt en la diapositiva " & slide.SlideIndex & "."
+    End If
+
+    Set nodos = smartShape.SmartArt.Nodes
+    eventosEnPagina = totalEventos - ((numeroDiapositiva - 1) * EVENTOS_POR_DIAPOSITIVA)
+    If eventosEnPagina > EVENTOS_POR_DIAPOSITIVA Then eventosEnPagina = EVENTOS_POR_DIAPOSITIVA
+
+    ' La plantilla original puede tener mas elementos; deja solo los necesarios.
+    Do While nodos.Count > eventosEnPagina
+        nodos(nodos.Count).Delete
+    Loop
+
+    If nodos.Count < eventosEnPagina Then
+        Err.Raise vbObjectError + 711, , "La plantilla no contiene suficientes nodos principales de SmartArt."
+    End If
+
+    ActualizarTituloPlantilla slide, TituloPresentacion()
+
+    For slot = 1 To eventosEnPagina
+        indiceEvento = ((numeroDiapositiva - 1) * EVENTOS_POR_DIAPOSITIVA) + slot
+        filaEvento = indiceEvento + 1
+        fechaTexto = FechaLargaEspanol(ws.Cells(filaEvento, COL_EVENTO_FECHA).Value)
+        tipoEvento = Trim$(CStr(ws.Cells(filaEvento, COL_EVENTO_TIPO).Value))
+        comentario = Trim$(CStr(ws.Cells(filaEvento, COL_EVENTO_COMENTARIO).Value))
+        colorEvento = ColorPorTipo(tipoEvento)
+
+        Set nodo = nodos(slot)
+        nodo.TextFrame2.TextRange.Text = fechaTexto & " - " & tipoEvento
+
+        If nodo.Nodes.Count > 0 Then
+            Set nodoDetalle = nodo.Nodes(1)
+            nodoDetalle.TextFrame2.TextRange.Text = comentario
+        Else
+            ' Respaldo para plantillas sin nodo secundario.
+            nodo.TextFrame2.TextRange.Text = fechaTexto & " - " & tipoEvento & vbCrLf & comentario
+        End If
+
+        AplicarColorNodoSmartArt nodo, colorEvento
+    Next slot
+End Sub
+
+Private Function BuscarSmartArt(ByVal slide As Object) As Object
+    Dim forma As Object
+
+    For Each forma In slide.Shapes
+        On Error Resume Next
+        If forma.HasSmartArt Then
+            Set BuscarSmartArt = forma
+            On Error GoTo 0
+            Exit Function
+        End If
+        On Error GoTo 0
+    Next forma
+End Function
+
+Private Sub AplicarColorNodoSmartArt(ByVal nodo As Object, ByVal colorEvento As Long)
+    Dim i As Long
+
+    On Error Resume Next
+    For i = 1 To nodo.Shapes.Count
+        nodo.Shapes(i).Fill.ForeColor.RGB = colorEvento
+    Next i
+    On Error GoTo 0
+End Sub
+
+Private Sub ActualizarTituloPlantilla(ByVal slide As Object, ByVal texto As String)
+    Dim forma As Object
+
+    For Each forma In slide.Shapes
+        If forma.Type <> 24 Then
+            On Error Resume Next
+            If forma.HasTextFrame Then
+                If forma.TextFrame.HasText Then
+                    If InStr(1, forma.TextFrame.TextRange.Text, "L" & ChrW(237) & "nea del tiempo", vbTextCompare) > 0 Then
+                        forma.TextFrame.TextRange.Text = texto
+                        Exit Sub
+                    End If
+                End If
+            End If
+            On Error GoTo 0
+        End If
+    Next forma
+End Sub
 
 Private Sub CompletarPresentacionBase(ByVal pptPres As Object)
     Do While pptPres.Slides.Count < DIAPO_PRIMERA_LINEA
@@ -664,35 +1103,16 @@ End Sub
 
 Private Sub LimpiarPowerPointSinEventos()
     Dim pptApp As Object
-    Dim pptPres As Object
     Dim rutaPpt As String
 
     rutaPpt = RutaPowerPoint()
-
     If rutaPpt = vbNullString Then Exit Sub
-    If Not CarpetaPowerPointDisponible(rutaPpt) Then Exit Sub
 
+    On Error Resume Next
     Set pptApp = ObtenerPowerPoint()
-    pptApp.Visible = True
-
-    If Dir$(rutaPpt) = vbNullString Then
-        If Not ConfirmarCreacionPresentacion(rutaPpt) Then Exit Sub
-        Set pptPres = CrearPresentacionBase(pptApp, rutaPpt)
-        If pptPres Is Nothing Then Exit Sub
-        MsgBox "La presentacion se creo con exito en:" & vbCrLf & vbCrLf & rutaPpt, vbInformation, "Presentacion creada"
-    Else
-        Set pptPres = AbrirOPresentacion(pptApp, rutaPpt)
-    End If
-
-    If PresentacionEnSoloLectura(pptPres, rutaPpt) Then Exit Sub
-
-    If pptPres.Slides.Count < DIAPO_PRIMERA_LINEA Then CompletarPresentacionBase pptPres
-
-    EliminarDiapositivasGeneradas pptPres
-    LimpiarDiapositiva pptPres.Slides(DIAPO_PRIMERA_LINEA)
-    AgregarTitulo pptPres.Slides(DIAPO_PRIMERA_LINEA), TituloPresentacion()
-    AgregarLineaBase pptPres.Slides(DIAPO_PRIMERA_LINEA), 0, LINEA_Y, pptPres.PageSetup.SlideWidth
-    If Not GuardarPresentacion(pptPres, rutaPpt) Then Exit Sub
+    If Not pptApp Is Nothing Then CerrarPresentacionSiAbierta pptApp, rutaPpt
+    If ArchivoExiste(rutaPpt) Then Kill rutaPpt
+    On Error GoTo 0
 End Sub
 
 Private Sub EliminarDiapositivasGeneradas(ByVal pptPres As Object)
@@ -757,6 +1177,7 @@ Private Sub DibujarDiapositivaEventos(ByVal slide As Object, ByVal ws As Workshe
     Dim x As Single
     Dim estaArriba As Boolean
 
+    AplicarFondo slide
     AgregarTitulo slide, TituloPresentacion()
     AgregarLineaBase slide, 0, LINEA_Y, slide.Parent.PageSetup.SlideWidth
 
@@ -764,100 +1185,138 @@ Private Sub DibujarDiapositivaEventos(ByVal slide As Object, ByVal ws As Workshe
         indiceEvento = ((numeroDiapositiva - 1) * EVENTOS_POR_DIAPOSITIVA) + slot
 
         If indiceEvento <= totalEventos Then
-            filaEvento = indiceEvento + 1
+            filaEvento = FilaEventoVisual(ws, indiceEvento)
             x = PosicionEventoX(slot)
             estaArriba = EventoVaArriba(numeroDiapositiva, slot)
             fechaTexto = FechaLargaEspanol(ws.Cells(filaEvento, COL_EVENTO_FECHA).Value)
             tipoEvento = CStr(ws.Cells(filaEvento, COL_EVENTO_TIPO).Value)
             comentario = CStr(ws.Cells(filaEvento, COL_EVENTO_COMENTARIO).Value)
 
-            AgregarEventoPowerPoint slide, x, LINEA_Y, estaArriba, fechaTexto, tipoEvento, comentario
+            AgregarEventoPowerPoint slide, x, LINEA_Y, estaArriba, fechaTexto, tipoEvento, comentario, indiceEvento
         End If
     Next slot
 End Sub
 
 Private Function PosicionEventoX(ByVal slot As Long) As Single
     Select Case slot
-        Case 1: PosicionEventoX = 96
-        Case 2: PosicionEventoX = 288
-        Case 3: PosicionEventoX = 480
-        Case 4: PosicionEventoX = 672
-        Case 5: PosicionEventoX = 864
+        Case 1: PosicionEventoX = 105
+        Case 2: PosicionEventoX = 255
+        Case 3: PosicionEventoX = 405
+        Case 4: PosicionEventoX = 555
+        Case 5: PosicionEventoX = 705
+        Case 6: PosicionEventoX = 855
     End Select
 End Function
 
 Private Function TituloPresentacion() As String
-    TituloPresentacion = "L" & ChrW(237) & "nea del tiempo de para la integraci" & ChrW(243) & "n de plataformas GPS con el PSIM"
+    TituloPresentacion = "L" & ChrW(237) & "nea del tiempo para la integraci" & ChrW(243) & "n de plataformas GPS con el PSIM"
 End Function
 
 Private Function EventoVaArriba(ByVal numeroDiapositiva As Long, ByVal slot As Long) As Boolean
-    If numeroDiapositiva Mod 2 = 1 Then
-        EventoVaArriba = (slot Mod 2 = 1)
-    Else
-        EventoVaArriba = (slot Mod 2 = 0)
-    End If
+    ' Patron fijo en todas las diapositivas: tres eventos arriba y tres abajo.
+    EventoVaArriba = (slot Mod 2 = 1)
 End Function
 
-Private Sub AgregarEventoPowerPoint(ByVal slide As Object, ByVal x As Single, ByVal yLinea As Single, ByVal estaArriba As Boolean, ByVal fechaTexto As String, ByVal tipoEvento As String, ByVal comentario As String)
-    Dim yMarcador As Single
-    Dim yFecha As Single
+Private Sub AgregarEventoPowerPoint(ByVal slide As Object, ByVal x As Single, ByVal yLinea As Single, _
+    ByVal estaArriba As Boolean, ByVal fechaTexto As String, ByVal tipoEvento As String, _
+    ByVal comentario As String, ByVal numeroEvento As Long)
+    Dim yEncabezado As Single
     Dim yComentario As Single
+    Dim yConector As Single
     Dim altoConector As Single
     Dim conector As Object
     Dim marcador As Object
-    Dim fechaBox As Object
+    Dim encabezado As Object
     Dim comentarioBox As Object
-    Dim yConector As Single
-    Dim altoRealConector As Single
-    Dim altoComentario As Single
-    Dim anchoComentario As Single
+    Dim colorEvento As Long
+    Dim colorFondo As Long
+    Dim altoRealComentario As Single
+    Const ANCHO_BLOQUE As Single = 184
+    Const ALTO_ENCABEZADO As Single = 45
+    Const ALTO_COMENTARIO_MAX As Single = 114
+    Const ALTO_COMENTARIO_MIN As Single = 44
 
-    altoConector = 102
-    anchoComentario = 138
-    altoComentario = AltoTextoComentario(comentario)
+    colorEvento = ColorPorTipo(tipoEvento)
+    colorFondo = ColorFondoPorTipo(tipoEvento)
+    altoConector = 26
 
     If estaArriba Then
-        yMarcador = yLinea - altoConector
-        yFecha = yLinea + 17
-        yComentario = yMarcador - 14 - altoComentario
-        yConector = yMarcador
-        altoRealConector = (yLinea - (LINEA_GROSOR / 2)) - yMarcador
+        yEncabezado = 235
+        yComentario = yEncabezado - ALTO_COMENTARIO_MAX
+        yConector = yEncabezado + ALTO_ENCABEZADO
     Else
-        yMarcador = yLinea + altoConector
-        yFecha = yLinea - 33
-        yComentario = yMarcador + 18
-        yConector = yLinea + (LINEA_GROSOR / 2)
-        altoRealConector = yMarcador - yConector
+        yEncabezado = 332
+        yComentario = yEncabezado + ALTO_ENCABEZADO
+        yConector = yLinea
     End If
 
-    Set conector = slide.Shapes.AddShape(1, x - (CONECTOR_GROSOR / 2), yConector, CONECTOR_GROSOR, altoRealConector)
-    conector.Fill.ForeColor.RGB = ColorPorTipo(tipoEvento)
+    Set conector = slide.Shapes.AddShape(1, x - 0.75, yConector, 1.5, altoConector)
+    conector.Fill.ForeColor.RGB = colorEvento
     conector.Line.Visible = False
 
-    Set marcador = slide.Shapes.AddShape(9, x - (MARCADOR_DIAMETRO / 2), yMarcador - (MARCADOR_DIAMETRO / 2), MARCADOR_DIAMETRO, MARCADOR_DIAMETRO)
-    marcador.Fill.ForeColor.RGB = RGB(255, 255, 255)
-    marcador.Line.ForeColor.RGB = ColorPorTipo(tipoEvento)
-    marcador.Line.Weight = 2.25
-
-    Set fechaBox = slide.Shapes.AddTextbox(1, x - 69, yFecha, 138, 22)
-    With fechaBox.TextFrame.TextRange
-        .Text = fechaTexto
+    Set marcador = slide.Shapes.AddShape(9, x - 10, yLinea - 10, 20, 20)
+    marcador.Fill.ForeColor.RGB = colorEvento
+    marcador.Line.ForeColor.RGB = RGB(255, 255, 255)
+    marcador.Line.Weight = 1.5
+    With marcador.TextFrame.TextRange
+        .Text = Format$(numeroEvento, "00")
         .Font.Name = "Calibri"
-        .Font.Size = 11
+        .Font.Size = 9
         .Font.Bold = True
-        .Font.Color.RGB = RGB(20, 20, 20)
+        .Font.Color.RGB = RGB(255, 255, 255)
         .ParagraphFormat.Alignment = 2
     End With
+    marcador.TextFrame.MarginLeft = 0
+    marcador.TextFrame.MarginRight = 0
+    marcador.TextFrame.MarginTop = 0
+    marcador.TextFrame.MarginBottom = 0
+    marcador.TextFrame.VerticalAnchor = 3
 
-    Set comentarioBox = slide.Shapes.AddTextbox(1, x - (anchoComentario / 2), yComentario, anchoComentario, altoComentario)
+    Set encabezado = slide.Shapes.AddShape(1, x - (ANCHO_BLOQUE / 2), yEncabezado, ANCHO_BLOQUE, ALTO_ENCABEZADO)
+    encabezado.Fill.ForeColor.RGB = colorEvento
+    encabezado.Line.Visible = False
+    With encabezado.TextFrame.TextRange
+        .Text = fechaTexto
+        .Font.Name = "Calibri"
+        .Font.Size = 16
+        .Font.Bold = True
+        .Font.Color.RGB = RGB(255, 255, 255)
+        .ParagraphFormat.Alignment = 2
+    End With
+    encabezado.TextFrame.VerticalAnchor = 3
+
+    Set comentarioBox = slide.Shapes.AddShape(1, x - (ANCHO_BLOQUE / 2), yComentario, ANCHO_BLOQUE, ALTO_COMENTARIO_MAX)
+    comentarioBox.Fill.ForeColor.RGB = colorFondo
+    comentarioBox.Line.Visible = False
     With comentarioBox.TextFrame.TextRange
         .Text = comentario
         .Font.Name = "Calibri"
-        .Font.Size = 12
-        .Font.Bold = False
-        .Font.Color.RGB = RGB(30, 30, 30)
+        .Font.Size = 14
+        .Font.Italic = False
+        .Font.Color.RGB = RGB(0, 0, 0)
         .ParagraphFormat.Alignment = 2
     End With
+    comentarioBox.TextFrame.MarginLeft = 11
+    comentarioBox.TextFrame.MarginRight = 11
+    comentarioBox.TextFrame.MarginTop = 8
+    comentarioBox.TextFrame.MarginBottom = 8
+    comentarioBox.TextFrame.VerticalAnchor = 3
+    comentarioBox.TextFrame.WordWrap = True
+    comentarioBox.TextFrame.AutoSize = 0
+
+    ' Ajusta el cuadro a la altura real del comentario, como lo haria SmartArt.
+    altoRealComentario = CSng(comentarioBox.TextFrame2.TextRange.BoundHeight) + _
+        CSng(comentarioBox.TextFrame.MarginTop) + CSng(comentarioBox.TextFrame.MarginBottom) + 4
+
+    If altoRealComentario < ALTO_COMENTARIO_MIN Then altoRealComentario = ALTO_COMENTARIO_MIN
+    If altoRealComentario > ALTO_COMENTARIO_MAX Then altoRealComentario = ALTO_COMENTARIO_MAX
+
+    comentarioBox.Height = altoRealComentario
+    If estaArriba Then
+        comentarioBox.Top = yEncabezado - altoRealComentario
+    Else
+        comentarioBox.Top = yEncabezado + ALTO_ENCABEZADO
+    End If
 End Sub
 
 Private Function AltoTextoComentario(ByVal texto As String) As Single
@@ -877,10 +1336,44 @@ Private Sub AgregarTitulo(ByVal slide As Object, ByVal texto As String)
     With titulo.TextFrame.TextRange
         .Text = texto
         .Font.Name = "Calibri"
-        .Font.Size = 18
+        .Font.Size = 28
         .Font.Bold = True
-        .Font.Color.RGB = RGB(0, 0, 0)
+        .Font.Color.RGB = RGB(15, 42, 67)
         .ParagraphFormat.Alignment = 2
+    End With
+End Sub
+
+Private Sub AplicarFondo(ByVal slide As Object)
+    slide.FollowMasterBackground = False
+    slide.Background.Fill.Solid
+    slide.Background.Fill.ForeColor.RGB = RGB(255, 255, 255)
+End Sub
+
+Private Sub AgregarSubtitulo(ByVal slide As Object, ByVal texto As String)
+    Dim caja As Object
+    Set caja = slide.Shapes.AddTextbox(1, 54, 80, 852, 24)
+    With caja.TextFrame.TextRange
+        .Text = texto
+        .Font.Name = "Aptos"
+        .Font.Size = 16
+        .Font.Color.RGB = RGB(100, 116, 139)
+    End With
+End Sub
+
+Private Sub AgregarPie(ByVal slide As Object, ByVal pagina As Long, ByVal totalPaginas As Long)
+    Dim pie As Object
+    Dim acento As Object
+    Set acento = slide.Shapes.AddShape(1, 54, 505, 54, 3)
+    acento.Fill.ForeColor.RGB = RGB(21, 96, 130)
+    acento.Line.Visible = False
+    Set pie = slide.Shapes.AddTextbox(1, 690, 493, 216, 20)
+    With pie.TextFrame.TextRange
+        .Text = "CRONOLOG" & ChrW(205) & "A  " & Format$(pagina, "00") & " / " & Format$(totalPaginas, "00")
+        .Font.Name = "Aptos"
+        .Font.Size = 10
+        .Font.Bold = True
+        .Font.Color.RGB = RGB(100, 116, 139)
+        .ParagraphFormat.Alignment = 3
     End With
 End Sub
 
@@ -916,14 +1409,61 @@ End Function
 Private Function ColorPorTipo(ByVal tipoEvento As String) As Long
     Select Case LCase$(Trim$(tipoEvento))
         Case "verde"
-            ColorPorTipo = RGB(34, 197, 94)
+            ColorPorTipo = RGB(112, 173, 71)
         Case "naranja"
-            ColorPorTipo = RGB(249, 115, 22)
+            ColorPorTipo = RGB(255, 117, 24)
         Case "rojo"
-            ColorPorTipo = RGB(239, 68, 68)
+            ColorPorTipo = RGB(255, 0, 0)
         Case Else
-            ColorPorTipo = RGB(59, 130, 246)
+            ColorPorTipo = RGB(21, 96, 130)
     End Select
+End Function
+
+Private Function ColorFondoPorTipo(ByVal tipoEvento As String) As Long
+    Select Case LCase$(Trim$(tipoEvento))
+        Case "verde"
+            ColorFondoPorTipo = RGB(226, 239, 218)
+        Case "naranja"
+            ColorFondoPorTipo = RGB(252, 228, 214)
+        Case "rojo"
+            ColorFondoPorTipo = RGB(244, 221, 221)
+    End Select
+End Function
+
+Private Function EsTipoEventoVisual(ByVal tipoEvento As String) As Boolean
+    Select Case LCase$(Trim$(QuitarAcentos(tipoEvento)))
+        Case "verde", "naranja", "rojo"
+            EsTipoEventoVisual = True
+    End Select
+End Function
+
+Private Function ContarEventosVisuales(ByVal ws As Worksheet) As Long
+    Dim ultimaFila As Long
+    Dim fila As Long
+
+    ultimaFila = UltimaFilaConDatos(ws, COL_EVENTO_ID)
+    For fila = 2 To ultimaFila
+        If EsTipoEventoVisual(CStr(ws.Cells(fila, COL_EVENTO_TIPO).Value)) Then
+            ContarEventosVisuales = ContarEventosVisuales + 1
+        End If
+    Next fila
+End Function
+
+Private Function FilaEventoVisual(ByVal ws As Worksheet, ByVal indiceVisual As Long) As Long
+    Dim ultimaFila As Long
+    Dim fila As Long
+    Dim contador As Long
+
+    ultimaFila = UltimaFilaConDatos(ws, COL_EVENTO_ID)
+    For fila = 2 To ultimaFila
+        If EsTipoEventoVisual(CStr(ws.Cells(fila, COL_EVENTO_TIPO).Value)) Then
+            contador = contador + 1
+            If contador = indiceVisual Then
+                FilaEventoVisual = fila
+                Exit Function
+            End If
+        End If
+    Next fila
 End Function
 
 Private Function QuitarAcentos(ByVal texto As String) As String
