@@ -28,15 +28,23 @@ Private Const MARCADOR_DIAMETRO As Single = 16
 Private Const CONECTOR_GROSOR As Single = 2
 Private Const MAX_CARACTERES_COMENTARIO As Long = 200
 Private Const NOMBRE_CANTIDAD_PENDIENTE As String = "CantidadEventosPendientes"
+Private Const FECHA_MINIMA_ANIO As Long = 2022
+Private Const FECHA_MINIMA_MES As Long = 1
+Private Const FECHA_MINIMA_DIA As Long = 1
+Private Const FECHA_MAXIMA_ANIO As Long = 2026
+Private Const FECHA_MAXIMA_MES As Long = 12
+Private Const FECHA_MAXIMA_DIA As Long = 31
 
 Public Sub Auto_Open()
     On Error Resume Next
     AplicarFijacionBotones ThisWorkbook.Worksheets(HOJA_REGISTRAR)
+    AplicarValidacionFechaFormulario ThisWorkbook.Worksheets(HOJA_REGISTRAR)
     On Error GoTo 0
 End Sub
 
 Public Sub fijarBotonesFormulario()
     AplicarFijacionBotones ThisWorkbook.Worksheets(HOJA_REGISTRAR)
+    AplicarValidacionFechaFormulario ThisWorkbook.Worksheets(HOJA_REGISTRAR)
     MsgBox "Los botones quedaron fijos y no cambiaran de tamano con las celdas.", _
         vbInformation, "Botones configurados"
 End Sub
@@ -529,7 +537,7 @@ Private Sub AplicarFijacionBotones(ByVal ws As Worksheet)
             ElseIf InStr(accion, "eliminaralineatiempo") > 0 Then
                 forma.Fill.ForeColor.RGB = RGB(192, 0, 0)
             ElseIf InStr(accion, "verpresentacion") > 0 Then
-                forma.Fill.ForeColor.RGB = RGB(0, 176, 80)
+                forma.Fill.ForeColor.RGB = RGB(59, 125, 35)
             End If
             On Error Resume Next
             With forma.TextFrame2.TextRange.Font
@@ -572,6 +580,7 @@ Private Sub PrepararFilasCaptura(ByVal ws As Worksheet, ByVal filaInicial As Lon
             .VerticalAlignment = xlCenter
         End With
         ws.Cells(fila, colFecha).NumberFormat = "dd/mm/yyyy"
+        AplicarValidacionFecha ws.Cells(fila, colFecha)
         AplicarValidacionFase ws.Cells(fila, colFase)
         AplicarValidacionComentario ws.Cells(fila, colComentario)
         With ws.Cells(fila, colComentario)
@@ -594,6 +603,67 @@ Private Function FilaCapturaTieneDatos(ByVal ws As Worksheet, ByVal fila As Long
     FilaCapturaTieneDatos = Trim$(CStr(ws.Cells(fila, colFecha).Value)) <> vbNullString And _
         Trim$(CStr(ws.Cells(fila, colFase).Value)) <> vbNullString And _
         Trim$(CStr(ws.Cells(fila, colComentario).Value)) <> vbNullString
+End Function
+
+Private Sub AplicarValidacionFechaFormulario(ByVal ws As Worksheet)
+    Dim filaEncabezado As Long
+    Dim filaCaptura As Long
+    Dim colFecha As Long
+    Dim cantidad As Long
+    Dim i As Long
+
+    filaEncabezado = FilaEncabezadoFormulario(ws)
+    If filaEncabezado = 0 Then Exit Sub
+
+    colFecha = ColumnaPorEncabezado(ws, "Fecha", filaEncabezado)
+    If colFecha = 0 Then Exit Sub
+
+    filaCaptura = filaEncabezado + 1
+    cantidad = CantidadCapturaPendiente()
+    If cantidad < 1 Then cantidad = 1
+
+    For i = 0 To cantidad - 1
+        ws.Cells(filaCaptura + i, colFecha).NumberFormat = "dd/mm/yyyy"
+        AplicarValidacionFecha ws.Cells(filaCaptura + i, colFecha)
+    Next i
+End Sub
+
+Private Sub AplicarValidacionFecha(ByVal celda As Range)
+    On Error Resume Next
+    celda.Validation.Delete
+    On Error GoTo 0
+
+    With celda.Validation
+        .Add Type:=xlValidateDate, AlertStyle:=xlValidAlertStop, _
+            Operator:=xlBetween, Formula1:=CStr(CLng(FechaMinimaValida())), _
+            Formula2:=CStr(CLng(FechaMaximaValida()))
+        .IgnoreBlank = True
+        .ShowInput = True
+        .InputTitle = "Rango de fechas"
+        .InputMessage = "Ingresa una fecha del " & TextoRangoFechasValidas() & "."
+        .ShowError = True
+        .ErrorTitle = "Fecha fuera del rango"
+        .ErrorMessage = MensajeFechaInvalida()
+    End With
+End Sub
+
+Private Function FechaMinimaValida() As Date
+    FechaMinimaValida = DateSerial(FECHA_MINIMA_ANIO, FECHA_MINIMA_MES, FECHA_MINIMA_DIA)
+End Function
+
+Private Function FechaMaximaValida() As Date
+    FechaMaximaValida = DateSerial(FECHA_MAXIMA_ANIO, FECHA_MAXIMA_MES, FECHA_MAXIMA_DIA)
+End Function
+
+Private Function TextoRangoFechasValidas() As String
+    TextoRangoFechasValidas = Format$(FechaMinimaValida(), "dd/mm/yyyy") & " al " & _
+        Format$(FechaMaximaValida(), "dd/mm/yyyy")
+End Function
+
+Private Function MensajeFechaInvalida() As String
+    MensajeFechaInvalida = "La fecha no es v" & ChrW(225) & "lida o est" & ChrW(225) & _
+        " fuera del rango permitido." & vbLf & _
+        "Rango v" & ChrW(225) & "lido: " & TextoRangoFechasValidas() & "."
 End Function
 
 Private Sub AplicarValidacionFase(ByVal celda As Range)
@@ -639,7 +709,17 @@ Private Function ValidarFilaCaptura(ByVal ws As Worksheet, ByVal fila As Long, _
     ByRef fechaEvento As Date, ByRef faseEvento As String, ByRef comentario As String) As Boolean
 
     If Not ObtenerFechaNormalizada(ws.Cells(fila, colFecha), fechaEvento) Then
-        MsgBox "Captura una fecha valida en la fila " & fila & ".", vbExclamation, "Evento incompleto"
+        MsgBox MensajeFechaInvalida() & vbCrLf & vbCrLf & _
+            "Revisa la fecha de la fila " & fila & ".", _
+            vbExclamation, "Fecha fuera del rango"
+        ws.Cells(fila, colFecha).Select
+        Exit Function
+    End If
+
+    If fechaEvento < FechaMinimaValida() Or fechaEvento > FechaMaximaValida() Then
+        MsgBox MensajeFechaInvalida() & vbCrLf & vbCrLf & _
+            "Revisa la fecha de la fila " & fila & ".", _
+            vbExclamation, "Fecha fuera del rango"
         ws.Cells(fila, colFecha).Select
         Exit Function
     End If
