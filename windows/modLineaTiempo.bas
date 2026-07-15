@@ -1088,11 +1088,11 @@ End Sub
 Private Function PosicionEventoX(ByVal slot As Long) As Single
     Select Case slot
         Case 1: PosicionEventoX = 120
-        Case 2: PosicionEventoX = 245
-        Case 3: PosicionEventoX = 370
-        Case 4: PosicionEventoX = 495
-        Case 5: PosicionEventoX = 620
-        Case 6: PosicionEventoX = 745
+        Case 2: PosicionEventoX = 264
+        Case 3: PosicionEventoX = 408
+        Case 4: PosicionEventoX = 552
+        Case 5: PosicionEventoX = 696
+        Case 6: PosicionEventoX = 840
     End Select
 End Function
 
@@ -1216,7 +1216,7 @@ Private Sub AgregarTitulo(ByVal slide As Object, ByVal texto As String)
         .Font.Name = "Calibri"
         .Font.Size = 28
         .Font.Bold = True
-        .Font.Color.RGB = RGB(15, 42, 67)
+        .Font.Color.RGB = RGB(0, 114, 124)
         .ParagraphFormat.Alignment = 2
     End With
 End Sub
@@ -1229,13 +1229,17 @@ End Sub
 
 Private Sub AgregarLeyendaFases(ByVal slide As Object)
     Dim elementos(0 To 5) As String
+    Const LEYENDA_X As Single = 28
 
-    elementos(0) = AgregarMuestraLeyenda(slide, 840.9771, 442.5558, RGB(78, 167, 46))
-    elementos(1) = AgregarMuestraLeyenda(slide, 840.9771, 462.3439, RGB(255, 153, 0))
-    elementos(2) = AgregarMuestraLeyenda(slide, 840.9771, 480.0171, RGB(255, 0, 0))
-    elementos(3) = AgregarTextoLeyenda(slide, 858.0166, 437.4508, "Fase de planeaci" & ChrW(243) & "n")
-    elementos(4) = AgregarTextoLeyenda(slide, 858.0166, 458.3228, "Fase de desarrollo")
-    elementos(5) = AgregarTextoLeyenda(slide, 858.76, 475.5359, "Fase de pruebas")
+    elementos(0) = AgregarMuestraLeyenda(slide, LEYENDA_X, 442.5558, RGB(78, 167, 46))
+    elementos(1) = AgregarMuestraLeyenda(slide, LEYENDA_X, 462.3439, RGB(255, 153, 0))
+    elementos(2) = AgregarMuestraLeyenda(slide, LEYENDA_X, 480.0171, RGB(255, 0, 0))
+    elementos(3) = AgregarTextoLeyenda(slide, LEYENDA_X + 17.0395, 437.4508, _
+        "Fase de planeaci" & ChrW(243) & "n")
+    elementos(4) = AgregarTextoLeyenda(slide, LEYENDA_X + 17.0395, 458.3228, _
+        "Fase de desarrollo")
+    elementos(5) = AgregarTextoLeyenda(slide, LEYENDA_X + 17.7829, 475.5359, _
+        "Fase de pruebas")
 
     ' En la diapositiva de referencia los seis objetos forman un solo grupo.
     slide.Shapes.Range(elementos).Group
@@ -1453,4 +1457,3 @@ Private Function MesDesdeTexto(ByVal texto As String) As Long
         Case "dic": MesDesdeTexto = 12
     End Select
 End Function
-
