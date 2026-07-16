@@ -1,0 +1,273 @@
+Option Explicit
+
+Public Sub ActualizarVista()
+    On Error GoTo ManejarError
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+
+    AjustarConfiguracion
+
+    ' Partidas visibles según configuración
+    MostrarFilas "Grupo 1", 5, 7, CLng(ValorSeguro("Configuracion", "B6", 3))
+    MostrarFilas "Grupo 2", 5, 7, CLng(ValorSeguro("Configuracion", "B8", 3))
+    MostrarFilas "Grupo 3", 5, 13, CLng(ValorSeguro("Configuracion", "B10", 9))
+
+    ' Bloques relacionados con partidas
+    MostrarFilas "Grupo 1", 12, 14, CLng(ValorSeguro("Configuracion", "B6", 3))
+    MostrarFilas "Grupo 2", 24, 26, CLng(ValorSeguro("Configuracion", "B8", 3))
+    MostrarFilas "Grupo 3", 18, 26, CLng(ValorSeguro("Configuracion", "B10", 9))
+
+    ActualizarHabilitacion
+    AplicarCamposSolicitud
+    InstalarFormatosCondicionales
+
+    Application.Calculate
+
+    AplicarColoresEstados
+
+Salida:
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    Exit Sub
+
+ManejarError:
+    MsgBox "No fue posible actualizar la vista." & vbCrLf & _
+           "Error " & Err.Number & ": " & Err.Description, _
+           vbExclamation, "Actualizar vista"
+    Resume Salida
+End Sub
+
+Public Sub InstalarFormatosCondicionales()
+    ConfigurarRangoEstado Worksheets("Resumen").Range("D4:D7")
+    ConfigurarRangoEstado Worksheets("Resumen").Range("I4:I7")
+    ConfigurarRangoEstado Worksheets("Resumen").Range("F13:F15")
+    ConfigurarRangoEstado Worksheets("Resumen").Range("J13:J15")
+    ConfigurarRangoEstado Worksheets("Configuracion").Range("D4:D11")
+
+    ConfigurarRangoEstado Worksheets("Grupo 1").Range("I5:I7")
+    ConfigurarRangoEstado Worksheets("Grupo 1").Range("T5:T7")
+
+    ConfigurarRangoEstado Worksheets("Grupo 2").Range("I5:I7")
+    ConfigurarRangoEstado Worksheets("Grupo 2").Range("T5:T7")
+    ConfigurarRangoEstado Worksheets("Grupo 2").Range("F12:F19")
+
+    ConfigurarRangoEstado Worksheets("Grupo 3").Range("I5:I13")
+    ConfigurarRangoEstado Worksheets("Grupo 3").Range("T5:T13")
+End Sub
+
+Private Sub ConfigurarRangoEstado(ByVal rango As Range)
+    Dim celda As String
+    Dim regla As FormatCondition
+
+    celda = rango.Cells(1, 1).Address(False, False)
+    rango.FormatConditions.Delete
+
+    Set regla = rango.FormatConditions.Add(Type:=xlExpression, Formula1:="=" & celda & "=""Vencido""")
+    regla.Interior.Color = RGB(244, 204, 204)
+    regla.Font.Color = RGB(156, 0, 6)
+    regla.Font.Bold = True
+    regla.StopIfTrue = True
+
+    Set regla = rango.FormatConditions.Add(Type:=xlExpression, Formula1:="=" & celda & "=""Con retraso""")
+    regla.Interior.Color = RGB(252, 228, 214)
+    regla.Font.Color = RGB(156, 87, 0)
+    regla.Font.Bold = True
+    regla.StopIfTrue = True
+
+    Set regla = rango.FormatConditions.Add(Type:=xlExpression, Formula1:="=OR(" & celda & "=""En correccion""," & celda & "=""Revisar"")")
+    regla.Interior.Color = RGB(252, 228, 214)
+    regla.Font.Color = RGB(156, 101, 0)
+    regla.Font.Bold = True
+    regla.StopIfTrue = True
+
+    Set regla = rango.FormatConditions.Add(Type:=xlExpression, Formula1:="=OR(" & celda & "=""En tiempo""," & celda & "=""Aceptado""," & celda & "=""Corregido""," & celda & "=""OK""," & celda & "=""Cerrado"")")
+    regla.Interior.Color = RGB(217, 234, 211)
+    regla.Font.Color = RGB(39, 78, 19)
+    regla.Font.Bold = True
+    regla.StopIfTrue = True
+
+    Set regla = rango.FormatConditions.Add(Type:=xlExpression, Formula1:="=OR(" & celda & "=""Pendiente""," & celda & "=""No aplica""," & celda & "=""En espera"")")
+    regla.Interior.Color = RGB(231, 230, 230)
+    regla.Font.Color = RGB(89, 89, 89)
+    regla.Font.Bold = True
+    regla.StopIfTrue = True
+End Sub
+
+Public Sub AplicarColoresEstados()
+    Dim fila As Long
+
+    For fila = 4 To 8
+        FormatearEstado Worksheets("Resumen").Cells(fila, "D")
+        FormatearEstado Worksheets("Resumen").Cells(fila, "I")
+    Next fila
+
+    For fila = 13 To 15
+        FormatearEstado Worksheets("Resumen").Cells(fila, "F")
+        FormatearEstado Worksheets("Resumen").Cells(fila, "J")
+    Next fila
+
+    For fila = 4 To 11
+        FormatearEstado Worksheets("Configuracion").Cells(fila, "D")
+    Next fila
+
+    For fila = 5 To 7
+        FormatearEstado Worksheets("Grupo 1").Cells(fila, "I")
+        FormatearEstado Worksheets("Grupo 1").Cells(fila, "T")
+
+        FormatearEstado Worksheets("Grupo 2").Cells(fila, "I")
+        FormatearEstado Worksheets("Grupo 2").Cells(fila, "T")
+    Next fila
+
+    For fila = 12 To 19
+        FormatearEstado Worksheets("Grupo 2").Cells(fila, "F")
+    Next fila
+
+    For fila = 5 To 13
+        FormatearEstado Worksheets("Grupo 3").Cells(fila, "I")
+        FormatearEstado Worksheets("Grupo 3").Cells(fila, "T")
+    Next fila
+End Sub
+
+Public Sub FormatearEstado(ByVal celda As Range)
+    Dim estado As String
+    estado = LCase(Trim(CStr(celda.Value)))
+
+    celda.Font.Name = "Calibri"
+    celda.Font.Size = 10
+    celda.Font.Bold = True
+    celda.Font.Color = RGB(55, 55, 55)
+
+    Select Case estado
+        Case "vencido"
+            celda.Interior.Color = RGB(244, 204, 204)
+            celda.Font.Color = RGB(156, 0, 6)
+
+        Case "con retraso", "en correccion", "revisar"
+            celda.Interior.Color = RGB(252, 228, 214)
+            celda.Font.Color = RGB(156, 87, 0)
+
+        Case "en tiempo", "aceptado", "corregido", "ok", "cerrado"
+            celda.Interior.Color = RGB(217, 234, 211)
+            celda.Font.Color = RGB(39, 78, 19)
+
+        Case "pendiente", "no aplica", "en espera"
+            celda.Interior.Color = RGB(231, 230, 230)
+            celda.Font.Color = RGB(89, 89, 89)
+
+        Case Else
+            celda.Interior.Color = RGB(243, 247, 244)
+            celda.Font.Bold = False
+            celda.Font.Color = RGB(0, 0, 0)
+    End Select
+End Sub
+
+Private Sub AjustarConfiguracion()
+    With Worksheets("Configuracion")
+        ' Máximo de partidas por grupo
+        LimitarCelda .Range("B6"), 1, 3
+        LimitarCelda .Range("B8"), 1, 3
+        LimitarCelda .Range("B10"), 1, 9
+
+        ' Solicitudes / firmas / periodos nunca pueden ser mayores que las partidas
+        LimitarCelda .Range("B7"), 1, CLng(.Range("B6").Value)
+        LimitarCelda .Range("B9"), 1, CLng(.Range("B8").Value)
+        LimitarCelda .Range("B11"), 1, CLng(.Range("B10").Value)
+    End With
+End Sub
+
+Private Sub LimitarCelda(ByVal celda As Range, ByVal minimo As Long, ByVal maximo As Long)
+    If Not IsNumeric(celda.Value) Then celda.Value = minimo
+
+    If CLng(celda.Value) < minimo Then
+        celda.Value = minimo
+    End If
+
+    If CLng(celda.Value) > maximo Then
+        celda.Value = maximo
+    End If
+End Sub
+
+Private Sub MostrarFilas(ByVal hoja As String, ByVal filaInicio As Long, ByVal filaFin As Long, ByVal cantidad As Long)
+    Dim r As Long
+    Dim limite As Long
+
+    limite = filaInicio + cantidad - 1
+
+    For r = filaInicio To filaFin
+        Worksheets(hoja).Rows(r).Hidden = (r > limite)
+    Next r
+End Sub
+
+Private Function ValorSeguro(ByVal hoja As String, ByVal celda As String, ByVal valorDefault As Long) As Long
+    If IsNumeric(Worksheets(hoja).Range(celda).Value) Then
+        ValorSeguro = CLng(Worksheets(hoja).Range(celda).Value)
+    Else
+        ValorSeguro = valorDefault
+    End If
+End Function
+
+Public Sub ActualizarHabilitacion()
+    Dim fila As Long
+
+    For fila = 5 To 7
+        ActualizarFila Worksheets("Grupo 1"), fila
+        ActualizarFila Worksheets("Grupo 2"), fila
+    Next fila
+
+    For fila = 5 To 13
+        ActualizarFila Worksheets("Grupo 3"), fila
+    Next fila
+End Sub
+
+Public Sub AplicarCamposSolicitud()
+    Dim fila As Long
+    Dim solicitudesG1 As Long
+    Dim solicitudesG2 As Long
+
+    solicitudesG1 = CLng(ValorSeguro("Configuracion", "B7", 1))
+    solicitudesG2 = CLng(ValorSeguro("Configuracion", "B9", 1))
+
+    For fila = 5 To 7
+        If fila <= 4 + solicitudesG1 Then
+            Worksheets("Grupo 1").Cells(fila, "B").Interior.Color = RGB(255, 242, 204)
+        Else
+            Worksheets("Grupo 1").Cells(fila, "B").Interior.Color = RGB(231, 230, 230)
+        End If
+
+        If fila <= 4 + solicitudesG2 Then
+            Worksheets("Grupo 2").Cells(fila, "B").Interior.Color = RGB(255, 242, 204)
+        Else
+            Worksheets("Grupo 2").Cells(fila, "B").Interior.Color = RGB(231, 230, 230)
+        End If
+    Next fila
+End Sub
+
+Public Sub ActualizarFila(ByVal hoja As Worksheet, ByVal fila As Long)
+    With hoja
+        .Cells(fila, "O").Interior.Color = RGB(242, 244, 247)
+        .Cells(fila, "P").Interior.Color = RGB(242, 244, 247)
+        .Cells(fila, "S").Interior.Color = RGB(242, 244, 247)
+
+        If .Cells(fila, "M").Value = "Aceptacion" Then
+            .Cells(fila, "O").Interior.Color = RGB(255, 242, 204)
+
+        ElseIf .Cells(fila, "M").Value = "Rechazo" Then
+            .Cells(fila, "P").Interior.Color = RGB(255, 242, 204)
+
+            If .Cells(fila, "P").Value <> "" Then
+                .Cells(fila, "S").Interior.Color = RGB(255, 242, 204)
+            End If
+        End If
+    End With
+End Sub
+
+Public Sub MostrarTodo()
+    Worksheets("Grupo 1").Rows("5:7").Hidden = False
+    Worksheets("Grupo 2").Rows("5:7").Hidden = False
+    Worksheets("Grupo 3").Rows("5:13").Hidden = False
+
+    Worksheets("Grupo 1").Rows("12:14").Hidden = False
+    Worksheets("Grupo 2").Rows("24:26").Hidden = False
+    Worksheets("Grupo 3").Rows("18:26").Hidden = False
+End Sub
